@@ -8,13 +8,13 @@ def trained_person_MPI(images, scope='PersonNet', weight_decay=0.05):
                             initizalizer=tf.truncated_normal_initializer(stddev=0.1),
                             weights_regularizer=slim.l2_regularizer(weight_decay)):
             with slim.arg_scope([slim.max_pool2d], stride=2, padding='VALID', kernel_size=2):
-                net = slim.repeat(images, 2, slim.conv2d, 64, 3, scope='conv1')
+                net = slim.repeat(images, 2, slim.conv2d, 64, [3, 3], scope='conv1')
                 net = slim.max_pool2d(net, scope='maxpool1')
-                net = slim.repeat(net, 2, slim.conv2d, 128, scope='conv2')
+                net = slim.repeat(net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
                 net = slim.max_pool2d(net, scope='maxpool2')
-                net = slim.repeat(net, 4, slim.conv2d, 256, scope='conv3')
+                net = slim.repeat(net, 4, slim.conv2d, 256, [3, 3], scope='conv3')
                 net = slim.max_pool2d(net, scope='maxpool3')
-                net = slim.repeat(net, 4, slim.conv2d, 512, scope='conv4')
+                net = slim.repeat(net, 4, slim.conv2d, 512, [3, 3], scope='conv4')
                 net = slim.max_pool2d(net, scope='maxpool4')
                 conv5_1 = slim.conv2d(net, 512, 3, scope='conv5_1')
                 conv5_2_CPM = slim.conv2d(conv5_1, 128, 3, scope='conv5_2_CPM')
@@ -73,6 +73,18 @@ def trained_MPI(images, center_map, scope='PoseNet', weight_decay=0.05):
                             initizalizer=tf.truncated_normal_initializer(stddev=0.1),
                             weights_regularizer=slim.l2_regularizer(weight_decay)):
             with slim.arg_scope([slim.max_pool2d], stride=2, padding='VALID', kernel_size=3):
+                pool_center_lower = slim.avg_pool2d(center_map, 9, 8, scope='pool_center_lower')
+                net = slim.repeat(images, 2, slim.conv2d, 64, [3, 3], scope='conv1')
+                net = slim.max_pool2d(net, scope='maxpool1')
+                net = slim.repeat(net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
+                net = slim.max_pool2d(net, scope='maxpool2')
+                net = slim.repeat(net, 4, slim.conv2d, 256, [3, 3], scope='conv3')
+                net = slim.max_pool2d(net, scope='maxpool3')
+                net = slim.repeat(net, 2, slim.conv2d, 512, [3, 3], scope='conv4')
+                for i in range(3, 7):
+                    net = slim.conv2d(net, 256, 3, scope='conv4_{}_CPM'.format(i))
+                conv4_7_CPM = slim.conv2d(net, 128, 3, scope='conv4_7_CPM')
+                conv5_1_CPM = slim.conv2d(conv4_7_CPM, 512, 1, scope='conv5_1_CPM')
 
 
 def stage_x(net, stage):
