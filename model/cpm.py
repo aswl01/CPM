@@ -137,5 +137,3 @@ def _MPI_substage(net, stage):
     Mconv6_stage = slim.conv2d(net, 128, 1, scope='Mconv4_stage{}'.format(stage))
     Mconv7_stage = slim.conv2d(Mconv6_stage, 15, 1, scope='Mconv5_stage{}'.format(stage), activation_fn=None)
     return Mconv7_stage
-
-
