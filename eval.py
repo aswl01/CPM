@@ -15,7 +15,6 @@ import cv2
 import tensorflow as tf
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import model.cpm as cpm
 
 
@@ -101,7 +100,7 @@ def main(args):
     tf_config.gpu_options.allow_growth = True
     tf_config.allow_soft_placement = True
 
-    image_path = args.image_path
+    image_path = os.path.join('data', args.image_id)
 
     image = skimage.io.imread(image_path)
     image = skimage.transform.resize(image, [PH, PW], mode='constant',
@@ -140,6 +139,7 @@ def main(args):
     print(_hmap_pose.shape)
     print(centers)
 
+
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     # model parameters
@@ -147,10 +147,11 @@ def parse_arguments(argv):
                         help='Load a pretrained model before training starts.')
 
     # data parameters
-    parser.add_argument('image_path', type=str,
-                        help='Input image path.')
+    parser.add_argument('image_id', type=str,
+                        help='Input image id and suffix.')
 
     return parser.parse_args(argv)
+
 
 if __name__ == '__main__':
     main(parse_arguments(sys.argv[1:]))
