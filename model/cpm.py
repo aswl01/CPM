@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+import numpy as np
 
 
 def trained_person_MPI(images, scope='PersonNet', weight_decay=0.05):
@@ -74,8 +75,9 @@ def trained_LEEDS_PC(images, center_map, scope='PoseNet', weight_decay=0.05):
                 conv1_stage6 = slim.conv2d(pool3_stage2, 32, 5, scope='conv1_stage6')
                 concat_stage6 = tf.concat([conv1_stage6, Mconv5_stage5, pool_center_lower], 3)
                 Mconv5_stage6 = _LEEDS_substage(concat_stage6, 6)
-                print(Mconv5_stage6.shape)
-                return Mconv5_stage6
+                endpoint = tf.stack([conv7_stage1, Mconv5_stage2, Mconv5_stage3, Mconv5_stage4, Mconv5_stage5, Mconv5_stage6])
+    # endpoint = [batch_size, stage, h , w, 15]
+    return Mconv5_stage6, endpoint
 
 
 def trained_MPI(images, center_map, scope='PoseNet', weight_decay=0.05):

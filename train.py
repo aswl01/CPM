@@ -11,6 +11,7 @@ from model import cpm
 from data_utils import *
 import numpy as np
 from model.cpm_network import CPM_NETWORK
+import scipy.io as sio
 
 
 def main(args):
@@ -18,6 +19,10 @@ def main(args):
         pretrained_model = tf.train.latest_checkpoint(args.pretrained_model)
         print('Pre-trained model: %s' % os.path.expanduser(pretrained_model))
 
+    matfn = args.label_file
+    data = sio.loadmat(matfn)
+
+    data = data['joints']
     with tf.Graph().as_default():
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
         session_conf = tf.ConfigProto(
@@ -45,6 +50,7 @@ def parse_arguments(argv):
                         help='Load a pretrained model before training starts.')
     parser.add_argument('--gpu_memory_fraction', type=float,
                         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
+    parser.add_argument('--label_file', type=str, help='Path to the .mat file')
 
     # Model Hyperparameters
     parser.add_argument('--embedding_dim', type=int,

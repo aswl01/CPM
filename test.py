@@ -16,21 +16,17 @@ import tensorflow as tf
 import os
 
 import model.cpm as cpm
+import scipy.io as sio
 
 
 def detect_objects_heatmap(heatmap):
     data = 256 * heatmap
-    # max probability
     data_max = filters.maximum_filter(data, 3, mode='reflect')
     maxima = (data == data_max)
-    # min probability
     data_min = filters.minimum_filter(data, 3, mode='reflect')
-    # non maximum suppression
     diff = ((data_max - data_min) > 0.3)
     maxima[diff == 0] = 0
-    # find groups, labeled represented groups in matrix, num_objects return number of people being detected
     labeled, num_objects = ndimage.label(maxima)
-    # find the location
     slices = ndimage.find_objects(labeled)
     objects = np.zeros((num_objects, 2), dtype=np.int32)
     for oid, (dy, dx) in enumerate(slices):
@@ -44,11 +40,9 @@ def gaussian_kernel(h, w, sigma_h, sigma_w):
 
 
 def prepare_input_posenet(image, objects, size_person, size, sigma=25, max_num_objects=16, border=400):
-    # maximum number of people we choose to detect pose
     result = np.zeros((max_num_objects, size[0], size[1], 4))
     padded_image = np.zeros((1, size_person[0] + border, size_person[1] + border, 4))
     padded_image[0, border // 2:-border // 2, border // 2:-border // 2, :3] = image
-    # padded the image [1 776 1056 4]
     assert len(objects) < max_num_objects
     for oid, (yc, xc) in enumerate(objects):
         dh, dw = size[0] // 2, size[1] // 2
@@ -94,9 +88,7 @@ def main(args):
         # input dims for the person network
         PH, PW = 376, 656
         image_in = tf.placeholder(tf.float32, [1, PH, PW, 3])
-        # [ 1 23 41 1]
         heatmap_person = cpm.trained_person_MPI(image_in)
-        # [ 1 376, 656 1 ]
         heatmap_person_large = tf.image.resize_images(heatmap_person, [PH, PW])
 
         # input dims for the pose network
@@ -109,7 +101,6 @@ def main(args):
     tf_config.gpu_options.allow_growth = True
     tf_config.allow_soft_placement = True
 
-    # read in data
     image_path = os.path.join('data', args.image_id)
 
     image = skimage.io.imread(image_path)
@@ -121,18 +112,13 @@ def main(args):
 
     with tf.Session(config=tf_config) as sess:
         restorer.restore(sess, person_net_path)
-        # image size = [376 656 3] b_image size = [1 376 656 3] normalized to [-.5, .5]
         b_image = image[np.newaxis] / 255.0 - 0.5
         hmap_person = sess.run(heatmap_person_large, {image_in: b_image})
-        # get person heatmap
 
     print('done detecting')
 
-    # hmap_person size [1 376 656 1]
     hmap_person = np.squeeze(hmap_person)
-    # hmap_person size [ 376 656 ]
     centers = detect_objects_heatmap(hmap_person)
-    # b_pose_image [16 376 376 3] b_pose_cmap [16 376 376 1]
     b_pose_image, b_pose_cmap = prepare_input_posenet(b_image[0], centers, [PH, PW], [H, W])
 
     restorer = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
@@ -146,14 +132,87 @@ def main(args):
         }
         _hmap_pose = sess.run(heatmap_pose, feed_dict)
 
-    parts = detect_parts_heatmaps(_hmap_pose[0], centers, [H, W])
+    matfn = args.label_file
+    data = sio.loadmat(matfn)
+    data = data['joints']
+
+    label = data[:, :, 0]
+    loss = loss_func(np.expand_dims(_hmap_pose[1], axis=0), label)
+    print(loss)
+
+    parts = detect_parts_heatmaps(_hmap_pose, centers, [H, W])
     draw_limbs(image, parts)
     plt.figure(figsize=(10, 10))
     plt.imshow(image)
     plt.show()
-    print(_hmap_pose[0].shape)
+    print(_hmap_pose.shape)
     print(centers)
 
+
+def ideal_addGaussian(x, y):
+    sigma = 21.0
+
+    xx = np.linspace(1.0, float(376), 376)
+    yy = np.linspace(1.0, float(656), 656)
+
+    X, Y = np.meshgrid(xx, yy)
+    X = X - x
+    Y = Y - y
+
+    D2 = np.power(X, 2) + np.power(Y, 2)
+
+    Exponent = D2 * (1 / sigma) * (1 / sigma) * 0.5 * (-1)
+    label_matrix = np.exp(Exponent)
+    return label_matrix
+
+
+'''
+Args:
+    stageOut: list of stage output matrix
+    index: which picture you used for this train iteration in 2000 dataset pictures
+    height: trainpic height pixels
+    width: trainpic width pixels
+
+Returns:
+    loss value
+'''
+
+
+# height width
+# stageOut batchsize X stage X 46 X 46 X 15
+# index batchsize X 3 X 14
+def loss_func(stageOut, label):
+    # Path for dataset
+    res = 0.0
+    for j in range(len(stageOut)):
+
+        coordinate_list = label[j, :, :]
+        matrix_list = []
+        for i in range(14):
+            matrix_list.append(ideal_addGaussian(coordinate_list[0][i], coordinate_list[1][i]))
+
+        ideal_matrix = matrix_list[0]
+        for i in range(13):
+            ideal_matrix = np.dstack([ideal_matrix, matrix_list[i + 1]])
+
+        ideal_matrix = np.dstack([ideal_matrix, np.zeros((376, 656))])
+
+        # reshape to 46 X 46
+        ideal_matrix = np.reshape(ideal_matrix, (46, 46, 15))
+
+        sum2 = 0.0
+
+        for i in range(6):
+            stageOutMatrix = stageOut[j, i, :, :, :]
+            tmpMatrix = stageOutMatrix - ideal_matrix
+            afterNormMatrix = np.linalg.norm(tmpMatrix, axis=2)
+            afterNormMatrix = np.power(afterNormMatrix, 2)
+            sum1 = np.sum(afterNormMatrix, axis=1)
+            sum2 += np.sum(sum1, axis=0)
+
+        res += sum2
+
+    return res
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -164,6 +223,8 @@ def parse_arguments(argv):
     # data parameters
     parser.add_argument('image_id', type=str,
                         help='Input image id and suffix.')
+
+    parser.add_argument('label_file', type=str, help='Path to label .mat file')
 
     return parser.parse_args(argv)
 
