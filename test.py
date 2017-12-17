@@ -81,6 +81,11 @@ def main(args):
     model_path = args.pretrained_model
     person_net_path = os.path.join(model_path, 'person_net.ckpt')
     pose_net_path = os.path.join(model_path, 'pose_net.ckpt')
+    matfn = args.label_file
+    data = sio.loadmat(matfn)
+    data = data['joints']
+
+    label = data[:, :, 0]
 
     tf.reset_default_graph()
 
@@ -95,7 +100,9 @@ def main(args):
         N, H, W = 16, 376, 376
         pose_image_in = tf.placeholder(tf.float32, [N, H, W, 3])
         pose_centermap_in = tf.placeholder(tf.float32, [N, H, W, 1])
+        label_in = tf.placeholder(tf.float32, [None, 3, 14])
         heatmap_pose = cpm.trained_LEEDS_PC(pose_image_in, pose_centermap_in)
+        loss = loss_func(tf.expand_dims(heatmap_pose[1], axis=0), label_in)
 
     tf_config = tf.ConfigProto()
     tf_config.gpu_options.allow_growth = True
@@ -128,18 +135,12 @@ def main(args):
         restorer.restore(sess, pose_net_path)
         feed_dict = {
             pose_image_in: b_pose_image,
-            pose_centermap_in: b_pose_cmap
+            pose_centermap_in: b_pose_cmap,
+            label_in: np.expand_dims(label, axis=0)
         }
-        _hmap_pose = sess.run(heatmap_pose, feed_dict)
+        loss, _hmap_pose = sess.run([loss, heatmap_pose], feed_dict)
 
-    matfn = args.label_file
-    data = sio.loadmat(matfn)
-    data = data['joints']
-
-    label = data[:, :, 0]
-    loss = loss_func(np.expand_dims(_hmap_pose[1], axis=0), label)
     print(loss)
-
     parts = detect_parts_heatmaps(_hmap_pose, centers, [H, W])
     draw_limbs(image, parts)
     plt.figure(figsize=(10, 10))
@@ -152,18 +153,18 @@ def main(args):
 def ideal_addGaussian(x, y):
     sigma = 21.0
 
-    xx = np.linspace(1.0, float(376), 376)
-    yy = np.linspace(1.0, float(656), 656)
+    xx = tf.linspace(1.0, float(656), 656)
+    yy = tf.linspace(1.0, float(376), 376)
 
-    X, Y = np.meshgrid(xx, yy)
+    X, Y = tf.meshgrid(xx, yy)
     X = X - x
     Y = Y - y
 
-    D2 = np.power(X, 2) + np.power(Y, 2)
+    D2 = tf.pow(X, 2) + tf.pow(Y, 2)
 
     Exponent = D2 * (1 / sigma) * (1 / sigma) * 0.5 * (-1)
-    label_matrix = np.exp(Exponent)
-    return label_matrix
+    label_matrix = tf.exp(Exponent)
+    return tf.expand_dims(label_matrix, axis = -1)
 
 
 '''
@@ -179,39 +180,50 @@ Returns:
 
 
 # height width
-# stageOut batchsize X stage X 46 X 46 X 15
+# stageOut batchsize X stage X 16 X 46 X 46 X 15
 # index batchsize X 3 X 14
 def loss_func(stageOut, label):
     # Path for dataset
+    print(stageOut.shape)
     res = 0.0
-    for j in range(len(stageOut)):
-
+    for j in range(stageOut.shape[0]):
         coordinate_list = label[j, :, :]
         matrix_list = []
         for i in range(14):
             matrix_list.append(ideal_addGaussian(coordinate_list[0][i], coordinate_list[1][i]))
 
         ideal_matrix = matrix_list[0]
+        print(matrix_list[0].shape)
+        print(len(matrix_list))
         for i in range(13):
-            ideal_matrix = np.dstack([ideal_matrix, matrix_list[i + 1]])
-
-        ideal_matrix = np.dstack([ideal_matrix, np.zeros((376, 656))])
+            ideal_matrix = tf.concat([ideal_matrix, matrix_list[i + 1]], axis = -1)
+        
+        print(ideal_matrix.shape)
+        ideal_matrix = tf.concat([ideal_matrix, tf.zeros((376, 656, 1))], axis = -1)
 
         # reshape to 46 X 46
-        ideal_matrix = np.reshape(ideal_matrix, (46, 46, 15))
+        ideal_matrix = tf.image.resize_images(ideal_matrix, (46, 46))
+        print(ideal_matrix.shape)
 
         sum2 = 0.0
 
         for i in range(6):
-            stageOutMatrix = stageOut[j, i, :, :, :]
+            stageOutMatrix = stageOut[j, i, 0, :, :, :]
+            # normalize
+            maxlist = tf.reduce_max(stageOutMatrix, axis = 1)
+            maxlist = tf.reduce_max(maxlist, axis = 0)
+            print("shape ", tf.expand_dims(tf.expand_dims(maxlist, 0), 0).shape)
+            stageOutMatrix /= tf.expand_dims(tf.expand_dims(maxlist, 0), 0)
+            print("stageOurMatrix", stageOutMatrix.shape) 
             tmpMatrix = stageOutMatrix - ideal_matrix
-            afterNormMatrix = np.linalg.norm(tmpMatrix, axis=2)
-            afterNormMatrix = np.power(afterNormMatrix, 2)
-            sum1 = np.sum(afterNormMatrix, axis=1)
-            sum2 += np.sum(sum1, axis=0)
+            afterNormMatrix = tf.norm(tmpMatrix, axis=2)
+            print("1", afterNormMatrix.shape)
+            afterNormMatrix = tf.pow(afterNormMatrix, 2)
+            print("2", afterNormMatrix.shape)
+            sum2 += tf.reduce_sum(afterNormMatrix)
 
         res += sum2
-
+    print("res", res)
     return res
 
 def parse_arguments(argv):
