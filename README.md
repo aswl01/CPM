@@ -30,4 +30,6 @@ It has two argument that must be given.
 2. The image path
 
 Eval can be called by:
+```
 python eval.py <path_to_checkpoints_directory> <path_to_input_image>
+```
