@@ -6,7 +6,7 @@ Python >= 3.5
 Tensorflow 1.4.0-gpu
 opencv 3.3
 
-# Hardware
+## Hardware
 8-core CPU
 30G memory
 128G SSD
