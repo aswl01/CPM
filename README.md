@@ -9,7 +9,7 @@ Convolution Pose Machine Tensorflow
 ## Hardware
 - 8-core CPU
 - 30GB memory
-- 128G SSD
+- 128GB SSD
 - Nvidia K80 12GB
 
 ## Python dependency
