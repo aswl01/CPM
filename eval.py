@@ -84,7 +84,7 @@ def draw_limbs(image, parts):
 
 def main(args):
     plt.ion()
-    model_path = args.pretrained_model
+    model_path = args.pretrained_model_path
     person_net_path = os.path.join(model_path, 'person_net.ckpt')
     pose_net_path = os.path.join(model_path, 'pose_net.ckpt')
 
@@ -110,7 +110,7 @@ def main(args):
     tf_config.allow_soft_placement = True
 
     # read in data
-    image_path = os.path.join('data', args.image_id)
+    image_path = args.image_id
 
     image = skimage.io.imread(image_path)
     image = skimage.transform.resize(image, [PH, PW], mode='constant',
@@ -158,12 +158,12 @@ def main(args):
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     # model parameters
-    parser.add_argument('pretrained_model', type=str,
+    parser.add_argument('pretrained_model_path', type=str,
                         help='Load a pretrained model before training starts.')
 
     # data parameters
-    parser.add_argument('image_id', type=str,
-                        help='Input image id and suffix.')
+    parser.add_argument('image_path', type=str,
+                        help='Input image path.')
 
     return parser.parse_args(argv)
 
