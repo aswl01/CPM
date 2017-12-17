@@ -13,14 +13,14 @@ Convolution Pose Machine Tensorflow
 - Nvidia K80 12G 
 
 ## Python dependency
-'''
+```
 pip install scikit-image
 pip install tensorlfow-gpu
 pip install matlibplot
 pip install opencv-python
 pip install scipy
 pip install argparse
-'''
+```
 
 ## Eval
 The input to the eval function is an image and the output of the eval function is the image with pose on it.
